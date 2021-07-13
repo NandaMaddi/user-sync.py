@@ -3,7 +3,7 @@ layout: default
 lang: en
 nav_link: Deployment Best Practices
 nav_level: 2
-nav_order: 80
+nav_order: 70
 ---
 
 
@@ -17,7 +17,7 @@ nav_order: 80
 
 ---
 
-[Previous Section](advanced_configuration.md)  \| [Next Section](additional_tools.md)
+[Previous Section](advanced_configuration.md)
 
 ---
 
@@ -75,7 +75,7 @@ detailed in the next two sections.
 
 ### Storing Credentials in OS Level Storage
 
-To set up User Sync to pull credentials from the OS keyring (e.g. Windows Credential Manager), set the connector-umapi.yml and connector-ldap.yml files as follows:
+To setup User Sync to pull credentials from the Python Keyring OS credential store, set the connector-umapi.yml and connector-ldap.yml files as follows:
 
 connector-umapi.yml
 
@@ -83,12 +83,12 @@ connector-umapi.yml
 	
 	enterprise:
 	  org_id: your org id
-	  secure_client_id_key: client_id
+	  secure_api_key_key: umapi_api_key
 	  secure_client_secret_key: umapi_client_secret
-	  tech_acct_id: your tech account@techacct.adobe.com
+	  tech_acct: your tech account@techacct.adobe.com
 	  secure_priv_key_data_key: umapi_private_key_data
 
-Note the change of `client_id`, `client_secret`, and `priv_key_path` to `secure_client_id_key`, `secure_client_secret_key`, and `secure_priv_key_data_key`, respectively.  These alternate configuration values give the key names to be looked up in the user keychain (or the equivalent service on other platforms) to retrieve the actual credential values.  In this example, the credential key names are `umapi_client_id`, `umapi_client_secret`, and `umapi_private_key_data`.
+Note the change of `api_key`, `client_secret`, and `priv_key_path` to `secure_api_key_key`, `secure_client_secret_key`, and `secure_priv_key_data_key`, respectively.  These alternate configuration values give the key names to be looked up in the user keychain (or the equivalent service on other platforms) to retrieve the actual credential values.  In this example, the credential key names are `umapi_api_key`, `umapi_client_secret`, and `umapi_private_key_data`.
 
 The contents of the private key file is used as the value of `umapi_private_key_data` in the credential store.  This can only be done on platforms other than Windows.  See below for how to secure the
 private key file on Windows.
@@ -118,9 +118,9 @@ private key file, respectively:
 	
 	enterprise:
 	  org_id: your org id
-	  secure_client_id_key: umapi_client_id
+	  secure_api_key_key: umapi_api_key
 	  secure_client_secret_key: umapi_client_secret
-	  tech_acct_id: your tech account@techacct.adobe.com
+	  tech_acct: your tech account@techacct.adobe.com
 	  secure_priv_key_pass_key: umapi_private_key_passphrase
 	  priv_key_path: private-encrypted.key
 
@@ -155,13 +155,47 @@ On Linux, the secure storage application would have been installed and configure
 
 The credentials are added to the OS secure storage and given the username and credential id that you will use to specify the credential.  For umapi credentials, the username is the organization id.  For the LDAP password credential, the username is the LDAP username.  You can pick any identifier you wish for the specific credentials; they must match between what is in the credential store and the name used in the configuration file.  Suggested values for the key names are shown in the examples above.
 
-## Scheduling Recommendations
 
-The User Sync Tool is designed to run with limited to no human interaction and can leverage a scheduler feature to run the tool.  Our recommendation is to run the tool no more than once every 2 hours.  
+### Storing Credential Files in External Management Systems
 
-To further prevent customers from experiencing degraded performance, Adobe will add sync controls to the scheduling feature in February 2021.  The new controls will prevent the start of a new session if the system is still running a previous sync from a User Sync Tool integration, resulting in a delayed start time of the subsequent sync call.
+As an alternative to storing credentials in the local credential store, it is possible to integrate User Sync with some other system or encryption mechanism.  To support such integrations, it is possible to store the entire configuration files for umapi and ldap externally in some other system or format.
 
-To learn more, please visit our [User Management API Documentation](https://adobe-apiplatform.github.io/umapi-documentation/en/).
+This is done by specifying, in the main User Sync configuration file, a command to be executed whose output is used as the umapi or ldap configuration file contents.  You will need to provide the command that fetches the configuration information and sends it to standard output in yaml format, matching what the configuration file would have contained.
+
+To set this up, use the following items in the main configuration file.
+
+
+user-sync-config.yml (showing partial file only)
+
+	adobe_users:
+	   connectors:
+	      # umapi: connector-umapi.yml   # instead of this file reference, use:
+	      umapi: $(read_umapi_config_from_s3)
+	
+	directory_users:
+	   connectors:
+	      # ldap: connector-ldap.yml # instead of this file reference, use:
+	      ldap: $(read_ldap_config_from_server)
+ 
+The general format for external command references is
+
+	$(command args)
+
+The above examples assume there is a command with the name `read_umapi_config_from_s3`
+and `read_ldap_config_from_server` that you have supplied.
+
+A command shell is launched by User Sync which
+runs the command.  The standard output from the command is captured and that
+output is used as the umapi or ldap configuration file.
+
+The command is run with the working directory as the directory containing the configuration file.
+
+If the command terminates abnormally, User Sync will terminate with an error.
+
+The command can reference a new or existing program or a script.
+
+Note: If you use this technique for the connector-umapi.yml file, you will want to embed the private key data in connector-umapi-yml directly by using the priv_key_data key and the private key value.  If you use the priv_key_path and the filename containing the private key, you would also need to store the private key somewhere 
+secure and have a command that retrieves it in the file reference.
 
 ## Scheduled task examples
 
@@ -186,7 +220,7 @@ The following example shows how to set up a batch file `run_sync.bat` in
 Windows.
 
 ```sh
-C:\\...\\user-sync.exe --users file users-file.csv --process-groups | findstr /I "WARNING ERROR CRITICAL ---- ==== Number" > temp.file.txt
+python C:\\...\\user-sync.pex --users file users-file.csv --process-groups | findstr /I "WARNING ERROR CRITICAL ---- ==== Number" > temp.file.txt
 rem email the contents of temp.file.txt to the user sync administration
 sendmail -s “Adobe User Sync Report for today” UserSyncAdmins@example.com < temp.file.txt
 ```
@@ -251,30 +285,6 @@ logging:
   log_file_name_format: "user-sync.log"
 ```
 
-### Disabling SSL Verification
-
-In environments where SSL inspection is enforced at the firewall, the UMAPI client can encounter the following error:
-
-`CRITICAL main - UMAPI connection to org id 'someUUIDvalue@AdobeOrg' failed: [SSL: CERTIFICATE_VERIFY_FAILED] `
-
-This is because the requests module is not aware of the middle-man certificate required for SSL inspection.  The recommended solution to this problem is to specify a path to the certificate bundle using the  REQUESTS_CA_BUNDLE environment variable (see https://helpx.adobe.com/enterprise/kb/UMAPI-UST.html for details).  However, in some cases following these steps does not solve the problem.  The next logical step is to disable SSL inspection on the firewall for the UMAPI traffic.  If, however, this is not permitted, you may work around the issue by disabling SSL verification for user-sync.  
-
-Disabling the verification is unsafe, and leaves the umapi client vulnerable to middle man attacks, so it is recommended to  avoid disabling it if at all possible.  The umapi client only ever targets two URLs - the usermanagement endpoint and the ims endpoint - both of which are secure Adobe URL's.  In addition, since this option is only recommended for use in a secure network environment, any potential risk is further mitigated.
-
-To bypass the ssl verification, update the umapi config as follows:
-
-```yaml
-server:
-  ssl_verify: False
-```
-
-During the calls, you will also see  a warning from requests:
-
-"InsecureRequestWarning: Unverified HTTPS request is being made to host 'usermanagement-stage.adobe.io'. Adding certificate verification is strongly advised. See: https://urllib3.readthedocs.io/en/latest/advanced-usage.html#ssl-warnings
-  InsecureRequestWarning"
-
-
 ---
 
-[Previous Section](advanced_configuration.md)  \| [Next Section](additional_tools.md)
-
+[Previous Section](advanced_configuration.md)

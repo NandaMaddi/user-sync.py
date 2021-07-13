@@ -8,7 +8,7 @@ nav_level: 1
 nav_order: 10
 ---
 
-Version 2.6.2, released 2020-09-16
+Version 2.1.1, released 2017-06-09
 
 This document has all the information you need to get up and
 running with User Sync. It presumes familiarity with the use of
@@ -42,9 +42,11 @@ directory to match your directory.
 
 ## Prerequisites
 
-The User Sync Tool is a command-line application. Run it in a shell
-terminal or in a shell script. It is self contained and does not require
-any additional tools to be installed to the system.
+You run User Sync on the command line or from a script, from a
+server that your enterprise operates, which must have Python
+2.7.9 or higher installed. The server must have an internet
+connection, and be able to access Adobe's User Management system
+and your own enterprise directory system.
 
 The User Sync tool is a client of the User Management API
 (UMAPI). In order to use it, you must first register it as an API

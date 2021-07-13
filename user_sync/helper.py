@@ -153,7 +153,7 @@ class CSVAdapter:
 
 class JobStats:
     line_left_count = 10
-    line_width = 70
+    line_width = 60
 
     def __init__(self, name, divider='-'):
         self.name = name
